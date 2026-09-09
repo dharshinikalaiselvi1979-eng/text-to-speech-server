@@ -3,6 +3,7 @@ const path = require('path');
 const { generateSpeech } = require('../services/ttsService');
 const supabase = require('../services/supabaseClient');
 const { voices } = require('../utils/voices');
+
 async function convertText(req, res) {
     const { text, language, voice } = req.body;
 
@@ -10,7 +11,14 @@ async function convertText(req, res) {
         const { filename, localUrl, spokenText } = await generateSpeech(text, language, voice);
 
         const { error } = await supabase.from('speech_history').insert([
-            { text, language, voice: voice || 'default', audio_url: localUrl, spoken_text: spokenText },
+            {
+                text,
+                language,
+                voice: voice || 'default',
+                audio_url: localUrl,
+                spoken_text: spokenText,
+                user_id: req.user.id,
+            },
         ]);
 
         if (error) {
@@ -25,6 +33,22 @@ async function convertText(req, res) {
     }
 }
 
+async function getHistory(req, res) {
+    const { data, error } = await supabase
+        .from('speech_history')
+        .select('id, text, language, voice, audio_url, created_at')
+        .eq('user_id', req.user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+    if (error) {
+        console.error('Supabase history fetch error:', error.message);
+        return res.status(500).json({ success: false, error: 'Could not load history.' });
+    }
+
+    res.status(200).json({ success: true, history: data });
+}
+
 function getVoices(req, res) {
     res.status(200).json({ voices });
 }
@@ -37,4 +61,4 @@ function downloadAudio(req, res) {
     res.download(filepath);
 }
 
-module.exports = { convertText, getVoices, downloadAudio };
+module.exports = { convertText, getVoices, downloadAudio, getHistory };
