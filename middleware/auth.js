@@ -1,7 +1,21 @@
 const supabase = require('../services/supabaseClient');
 
-// Requires a valid Supabase access token in the Authorization header.
-// Attaches the authenticated user to req.user on success.
+// Optional auth — attaches req.user if a valid token is provided.
+// If no token or invalid token, request continues without req.user (Level 1 still works).
+async function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token) return next(); // no token → continue as unauthenticated
+
+  const { data, error } = await supabase.auth.getUser(token);
+  if (!error && data?.user) {
+    req.user = data.user;
+  }
+  next();
+}
+
+// Hard auth — rejects the request if no valid token.
 async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -11,7 +25,6 @@ async function requireAuth(req, res, next) {
   }
 
   const { data, error } = await supabase.auth.getUser(token);
-
   if (error || !data?.user) {
     return res.status(401).json({ success: false, error: 'Your session has expired. Please log in again.' });
   }
@@ -20,4 +33,4 @@ async function requireAuth(req, res, next) {
   next();
 }
 
-module.exports = requireAuth;
+module.exports = { optionalAuth, requireAuth };
