@@ -7,9 +7,12 @@ const ttsRoutes = require('./routes/ttsRoutes');
 
 const app = express();
 
-// Spec 15: CORS configured correctly — only allow our own frontend
-const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
-app.use(cors({ origin: allowedOrigin }));
+// Allow both local dev and production frontend
+const allowedOrigins = [
+  'http://localhost:5173',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 // Serve generated audio files for playback

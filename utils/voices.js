@@ -17,4 +17,5 @@ const voices = [
 ];
 
 const supportedLanguages = [...new Set(voices.map((v) => v.language))];
+
 module.exports = { voices, supportedLanguages };
