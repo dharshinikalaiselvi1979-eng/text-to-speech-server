@@ -19,9 +19,12 @@ async function signup(req, res) {
   });
 
   if (error) {
-    const msg = error.message.includes('already registered')
-      ? 'An account with this email already exists.'
-      : error.message;
+    let msg = error.message;
+    if (msg.includes('already registered')) {
+      msg = 'An account with this email already exists.';
+    } else if (msg.includes('fetch failed') || error.name === 'AuthRetryableFetchError') {
+      msg = 'Unable to connect to authentication server. Please verify your Supabase project status or SUPABASE_URL in .env.';
+    }
     return res.status(400).json({ success: false, error: msg });
   }
 
@@ -39,7 +42,13 @@ async function login(req, res) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error || !data.session) {
-    return res.status(401).json({ success: false, error: 'Invalid email or password.' });
+    const isNetworkErr = error?.message?.includes('fetch failed') || error?.name === 'AuthRetryableFetchError';
+    return res.status(isNetworkErr ? 503 : 401).json({
+      success: false,
+      error: isNetworkErr
+        ? 'Unable to connect to authentication server. Please verify your Supabase project status or SUPABASE_URL in .env.'
+        : 'Invalid email or password.',
+    });
   }
 
   return res.status(200).json({
