@@ -8,6 +8,9 @@ const supabase = require('./services/supabaseClient');
 
 const app = express();
 
+// Enable trust proxy for reverse proxies like Render/Vercel
+app.set('trust proxy', 1);
+
 // Allow all origins (no sensitive client-side data)
 app.use(cors());
 app.use(express.json());

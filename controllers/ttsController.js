@@ -70,6 +70,9 @@ async function getFavourites(req, res) {
     .order('created_at', { ascending: false });
 
   if (error) {
+    if (error.code === 'PGRST205') {
+      return res.status(200).json({ success: true, favourites: [], warning: 'favourites table missing in Supabase' });
+    }
     console.error('Favourites fetch error:', error.message);
     return res.status(500).json({ success: false, error: 'Could not load favourites.' });
   }
@@ -79,44 +82,66 @@ async function getFavourites(req, res) {
 // POST /api/favourites — requires auth
 async function addFavourite(req, res) {
   const { voice_name, language } = req.body;
-  if (!voice_name || !language) {
-    return res.status(400).json({ success: false, error: 'voice_name and language are required.' });
+  if (!voice_name) {
+    return res.status(400).json({ success: false, error: 'voice_name is required.' });
   }
 
-  // Prevent duplicates
-  const { data: existing } = await supabase
+  // Check if favourites table exists / existing entry
+  const { data: existing, error: findErr } = await supabase
     .from('favourites')
-    .select('id')
+    .select('id, voice_name, language')
     .eq('user_id', req.user.id)
     .eq('voice_name', voice_name)
-    .single();
+    .maybeSingle();
+
+  if (findErr && findErr.code === 'PGRST205') {
+    return res.status(400).json({
+      success: false,
+      error: 'Favourites table is not created in Supabase database yet. Please run the SQL setup script in your Supabase SQL Editor.',
+    });
+  }
 
   if (existing) {
-    return res.status(200).json({ success: true, message: 'Already in favourites.' });
+    return res.status(200).json({ success: true, favourite: existing, message: 'Already in favourites.' });
   }
 
   const { data, error } = await supabase
     .from('favourites')
-    .insert([{ user_id: req.user.id, voice_name, language }])
+    .insert([{ user_id: req.user.id, voice_name, language: language || 'en' }])
     .select()
     .single();
 
   if (error) {
+    if (error.code === 'PGRST205') {
+      return res.status(400).json({
+        success: false,
+        error: 'Favourites table is not created in Supabase database yet. Please run the SQL setup script in your Supabase SQL Editor.',
+      });
+    }
     console.error('Add favourite error:', error.message);
     return res.status(500).json({ success: false, error: 'Could not add favourite.' });
   }
   res.status(201).json({ success: true, favourite: data });
 }
 
-// DELETE /api/favourites/:id — requires auth
+// DELETE /api/favourites/:id — requires auth (accepts UUID id or voice_name)
 async function removeFavourite(req, res) {
-  const { error } = await supabase
-    .from('favourites')
-    .delete()
-    .eq('id', req.params.id)
-    .eq('user_id', req.user.id); // ensure ownership
+  const param = req.params.id;
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(param);
+
+  let query = supabase.from('favourites').delete().eq('user_id', req.user.id);
+  if (isUuid) {
+    query = query.eq('id', param);
+  } else {
+    query = query.eq('voice_name', param);
+  }
+
+  const { error } = await query;
 
   if (error) {
+    if (error.code === 'PGRST205') {
+      return res.status(200).json({ success: true, message: 'Table missing, ignored.' });
+    }
     console.error('Remove favourite error:', error.message);
     return res.status(500).json({ success: false, error: 'Could not remove favourite.' });
   }
